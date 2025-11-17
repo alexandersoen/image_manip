@@ -4,34 +4,58 @@ from typing import Protocol, TypeVar
 import matplotlib.pyplot as plt
 import numpy as np
 
+from numpy.typing import NDArray
+
 from PIL import Image
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
+###############################################################################
+### Type Definitions ##########################################################
+###############################################################################
 
 ResizeType = tuple[int | None, int | None]
 
-T = TypeVar("T")
-U = TypeVar("U")
+T = TypeVar("T", covariant=True)
+U = TypeVar("U", bound=np.generic, contravariant=True)
+V = TypeVar("V", bound=np.generic, covariant=True)
+
+
+@dataclass
+class QuantizedColourImage:
+    """Dataclass for quantized colour image."""
+
+    image_data: NDArray[np.int_]
+    centers: NDArray[np.float32]
+
+
+###############################################################################
+### Protocols #################################################################
+###############################################################################
 
 
 class ImageTemplate(Protocol[T, U]):
-    def __call__(self, x: np.ndarray[U]) -> T: ...
+    def __call__(self, x: NDArray[U]) -> T: ...
 
 
-class CharFormater(Protocol[U]):
-    def __call__(self, i: int, centers: np.ndarray[float]) -> U: ...
+class CharFormater(Protocol[V]):
+    def __call__(self, i: int, centers: NDArray[np.float32]) -> V: ...
 
 
-def str_template(x: np.ndarray[str]) -> str:
+###############################################################################
+### Image Template Functions ##################################################
+###############################################################################
+
+
+def str_template(x: NDArray[np.str_]) -> np.str_:
     """String template function."""
     final_str = ""
     for row in x:
         final_str += "".join(row) + "\n"
-    return final_str[:-1]
+    return np.str_(final_str[:-1])
 
 
-def html_str_template(x: np.ndarray[str]) -> str:
+def html_str_template(x: NDArray[np.str_]) -> np.str_:
     """HTML string template function."""
     str_vals = str_template(x)
     final_html = f"""
@@ -42,15 +66,12 @@ def html_str_template(x: np.ndarray[str]) -> str:
     </body>
     </html>
     """
-    return final_html
+    return np.str_(final_html)
 
 
-@dataclass
-class QuantizedColourImage:
-    """Dataclass for quantized colour image."""
-
-    image_data: np.ndarray[int]
-    centers: np.ndarray[float]
+###############################################################################
+### Image Manipulation Class ##################################################
+###############################################################################
 
 
 class ImageManipulate:
@@ -73,7 +94,7 @@ class ImageManipulate:
         image = Image.open(self.path_to_image)
         self.image = image.convert("RGB")
 
-    def resize(self, resize=None) -> None:
+    def resize(self, resize: ResizeType | None = None) -> None:
         """Resize image.
 
         Parameters
@@ -83,24 +104,32 @@ class ImageManipulate:
             (None, None) retains default size. A number and None will retain the
             original ratio.
         """
-        if resize is None or (resize[0] is None and resize[1] is None):
+        if resize is None:
             return
 
         # resize
-        horig, vorig = self.image.size
         hresize, vresize = resize
-        if hresize is None:
+        horig, vorig = self.image.size
+        if hresize is None and vresize is not None:
             scale = vresize / vorig
             hresize = int(horig * scale)
-        elif vresize is None:
+            resize = (hresize, vresize)
+
+        elif vresize is None and hresize is not None:
             scale = hresize / horig
             vresize = int(vorig * scale)
+            resize = (hresize, vresize)
 
-        resize = (hresize, vresize)
+        elif hresize is not None and vresize is not None:
+            resize = (hresize, vresize)
+
+        else:
+            return
+
         self.image = self.image.resize(resize)
 
     def get_colour_quantize_image(
-        self, components: int, seed: int
+        self, components: int, seed: int | None
     ) -> QuantizedColourImage:
         """Quantize the image colour with k means clustering.
 
@@ -141,13 +170,18 @@ class ImageManipulate:
         )
 
 
+###############################################################################
+### Image Manipulation Functions ##############################################
+###############################################################################
+
+
 def img_to_quantized_output(
     path_to_image: str,
     image_template: ImageTemplate[T, U],
     pixel_formater: CharFormater[U],
-    components=20,
-    resize=None,
-    seed=None,
+    components: int = 20,
+    resize: ResizeType | None = None,
+    seed: int | None = None,
 ) -> T:
     """Convert image to quantized string representation.
 
@@ -228,12 +262,12 @@ def img_to_ascii(
             "ascii_str is not long enough for the number of components specified."
         )
 
-    def ascii_char_formater(i: int, centers: np.ndarray) -> str:
+    def ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
         if colour:
             r, g, b = centers[i].astype(int)
             char = f"\033[38;2;{r};{g};{b}m" + char + "\033[0m"
-        return char
+        return np.str_(char)
 
     return img_to_quantized_output(
         path_to_image=path_to_image,
@@ -277,13 +311,13 @@ def img_to_html_ascii(
             "ascii_str is not long enough for the number of components specified."
         )
 
-    def html_ascii_char_formater(i: int, centers: np.ndarray) -> str:
+    def html_ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
         if colour:
             r, g, b = centers[i].astype(int)
             hex_str = f"#{r:02x}{g:02x}{b:02x}"
             char = f'<span style="color:{hex_str}">{char}</span>'
-        return char
+        return np.str_(char)
 
     html_str = img_to_quantized_output(
         path_to_image=path_to_image,
@@ -328,7 +362,7 @@ def cartoon_filter(
 
     """
 
-    def cartoon_char_formater(i: int, centers: np.ndarray) -> str:
+    def cartoon_char_formater(i: int, centers: np.ndarray) -> np.float32:
         return centers[i] / 255.0
 
     quantized_colour_image = img_to_quantized_output(
@@ -367,10 +401,10 @@ def img_to_html_pixelart(
         The random seed to use for KMeans clustering. Can be None.
     """
 
-    def pixel_char_formater(i: int, centers: np.ndarray) -> str:
+    def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
         r, g, b = centers[i].astype(int)
         hex_str = f"#{r:02x}{g:02x}{b:02x}"
-        return f'<span style="color:{hex_str}">█</span>'
+        return np.str_(f'<span style="color:{hex_str}">█</span>')
 
     pixel_output = img_to_quantized_output(
         path_to_image=path_to_image,
