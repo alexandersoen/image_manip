@@ -1,56 +1,108 @@
-import os
+from dataclasses import dataclass
+from typing import Protocol, TypeVar
 
-import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
+
 from PIL import Image
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 
-class ImageManip:
+ResizeType = tuple[int | None, int | None]
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+class ImageTemplate(Protocol[T, U]):
+    def __call__(self, x: np.ndarray[U]) -> T: ...
+
+
+class CharFormater(Protocol[U]):
+    def __call__(self, i: int, centers: np.ndarray[float]) -> U: ...
+
+
+def str_template(x: np.ndarray[str]) -> str:
+    """String template function."""
+    final_str = ""
+    for row in x:
+        final_str += "".join(row) + "\n"
+    return final_str[:-1]
+
+
+def html_str_template(x: np.ndarray[str]) -> str:
+    """HTML string template function."""
+    str_vals = str_template(x)
+    final_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <body>
+        <pre style="font-family: monospace; font-size: 14px; line-height: 1ch;">{str_vals}</pre>
+    </body>
+    </html>
+    """
+    return final_html
+
+
+@dataclass
+class QuantizedColourImage:
+    """Dataclass for quantized colour image."""
+
+    image_data: np.ndarray[int]
+    centers: np.ndarray[float]
+
+
+class ImageManipulate:
     """Manipulate images."""
 
-    def __init__(self, path_to_image, resize=(None, None)):
+    def __init__(self, path_to_image: str) -> None:
         """
         Parameters
         ----------
         path_to_image : str
             Path to the image to be converted.
-        resize : (int, int)
-            Resizing the image. Each pixel will be an ascii character. (None, None)
-            retains default size. A number and None will retain the original ratio.
         """
 
         self.path_to_image = path_to_image
-        self.resize = resize
+        self._load_img_data()
 
-    def preprocess_img(self):
-        """Resize image."""
+    def _load_img_data(self) -> None:
+        """Load image data from path."""
+
+        image = Image.open(self.path_to_image)
+        self.image = image.convert("RGB")
+
+    def resize(self, resize=None) -> None:
+        """Resize image.
+
+        Parameters
+        ----------
+        resize : (int, int)
+            Resizing the image. Each pixel will be an ascii character. None or
+            (None, None) retains default size. A number and None will retain the
+            original ratio.
+        """
+        if resize is None or (resize[0] is None and resize[1] is None):
+            return
 
         # resize
-        image = Image.open(self.path_to_image)
-        image = image.convert("RGB")
+        horig, vorig = self.image.size
+        hresize, vresize = resize
+        if hresize is None:
+            scale = vresize / vorig
+            hresize = int(horig * scale)
+        elif vresize is None:
+            scale = hresize / horig
+            vresize = int(vorig * scale)
 
-        horig, vorig = image.size
-        if self.resize[0] is not None and self.resize[1] is None:
-            scale = self.resize[0] / horig
-            self.resize = (self.resize[0], int(vorig * scale))
-        elif self.resize[0] is None and self.resize[1] is not None:
-            scale = self.resize[1] / vorig
-            self.resize = (int(horig * scale), self.resize[1])
-        if self.resize[0] is not None and self.resize[1] is not None:
-            new_image = image.resize(self.resize)
-        else:
-            new_image = image
+        resize = (hresize, vresize)
+        self.image = self.image.resize(resize)
 
-        new_image_save_path = (
-            "_temp_" + os.path.splitext(self.path_to_image)[0] + ".png"
-        )
-        new_image.save(new_image_save_path)
-
-    def fit(self, components, seed):
-        """Fit the image with k means clustering.
+    def get_colour_quantize_image(
+        self, components: int, seed: int
+    ) -> QuantizedColourImage:
+        """Quantize the image colour with k means clustering.
 
         Parameters
         ----------
@@ -61,52 +113,92 @@ class ImageManip:
 
         Returns
         -------
-        data : dict
-            img (2darray of ints) is the fitted image, each value is a component.
-            img_orig (2darray of floats) is the original img.
-            centers (2darray of floats) is the center of the clusters.
+        quantized_image : QuantizedColourImage
+            The quantized colour image.
         """
 
         # open and reshape in matplotlib
-        temp_path = "_temp_" + os.path.splitext(self.path_to_image)[0] + ".png"
-        img = mpimg.imread(temp_path)
-        img = 256 * img.astype(float)
+        image_data = np.array(self.image, dtype=float)
 
-        os.remove(temp_path)  # remove temp image
-        vpx, hpx, rgb = img.shape
-        img = img.reshape(vpx * hpx, rgb)
+        vpx, hpx, rgb = image_data.shape
+        image_data = image_data.reshape(vpx * hpx, rgb)
 
         # normalise
-        scaler = StandardScaler().fit(img)
-        img_scale = scaler.transform(img)
+        scaler = StandardScaler().fit(image_data)
+        img_scale = scaler.transform(image_data)
 
         # fit and apply k means clustering
         kmeans = KMeans(n_clusters=components, random_state=seed)
         kmeans.fit(img_scale)
         # this seems to keep ordering correct as opposed to predict
         # important for cartoon filter, not so much ascii art
-        img_trans = kmeans.labels_
-        img_trans = img_trans.reshape(vpx, hpx)
+        image_quantized = kmeans.labels_
+        image_quantized = image_quantized.reshape(vpx, hpx)
 
-        return {
-            "img": img_trans,
-            "img_orig": img.reshape(vpx, hpx, rgb),
-            "centers": scaler.inverse_transform(kmeans.cluster_centers_),
-        }
+        return QuantizedColourImage(
+            image_data=image_quantized,
+            centers=scaler.inverse_transform(kmeans.cluster_centers_),
+        )
 
 
-def rgb_str(str, r, g, b):
-    """Return string in rgb colour for terminal output."""
-    return f"\033[38;2;{r};{g};{b}m" + str + "\033[0m"
+def img_to_quantized_output(
+    path_to_image: str,
+    image_template: ImageTemplate[T, U],
+    pixel_formater: CharFormater[U],
+    components=20,
+    resize=None,
+    seed=None,
+) -> T:
+    """Convert image to quantized string representation.
+
+    Parameters
+    ----------
+    path_to_image : str
+        Path to the image to be converted.
+    str_template : function
+        Function to format the final string. If None, default function is used.
+    char_formater : function
+        Function to format each character. If None, default function is used.
+    components : int
+        Number of components/characters to convert image into.
+    resize : (int, int)
+        Resizing the image. Each pixel will be an ascii character. None or
+        (None, None) retains default size. A number and None will retain the
+        original ratio.
+    seed : int
+        The random seed to use for KMeans clustering. Can be None.
+
+    Returns
+    -------
+    quantized_str : str
+        The image converted to quantized string representation.
+    """
+
+    img_obj = ImageManipulate(path_to_image=path_to_image)
+    img_obj.resize(resize=resize)
+    quantized_color_image = img_obj.get_colour_quantize_image(components, seed=seed)
+
+    # convert to quantized string
+
+    quantized_output = []
+    for row in quantized_color_image.image_data:
+        output_row = []
+        for v in row:
+            pixel = pixel_formater(v, quantized_color_image.centers)
+            output_row.append(pixel)
+        quantized_output.append(output_row)
+    quantized_array = np.array(quantized_output)
+
+    return image_template(quantized_array)
 
 
 def img_to_ascii(
-    path_to_image,
-    components=20,
-    resize=(None, None),
-    ascii_str="-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
-    colour=True,
-    seed=None,
+    path_to_image: str,
+    components: int = 20,
+    resize: ResizeType | None = None,
+    ascii_str: str = "-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
+    colour: bool = True,
+    seed: int | None = None,
 ):
     """Convert image to ascii art.
 
@@ -117,8 +209,9 @@ def img_to_ascii(
     components : int
         Number of components/characters to convert image into.
     resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. (None, None)
-        retains default size. A number and None will retain the original ratio.
+        Resizing the image. Each pixel will be an ascii character. None or
+        (None, None) retains default size. A number and None will retain the
+        original ratio.
     colour : bool
         Whether to output ascii art in colour.
     ascii_str : str
@@ -130,49 +223,135 @@ def img_to_ascii(
     ascii_art : str
         The image converted to ascii art.
     """
-
     if components > len(ascii_str):
         raise ValueError(
             "ascii_str is not long enough for the number of components specified."
         )
 
-    img_obj = ImageManip(path_to_image=path_to_image, resize=resize)
-    img_obj.preprocess_img()
-    data = img_obj.fit(components, seed=seed)
+    def ascii_char_formater(i: int, centers: np.ndarray) -> str:
+        char = ascii_str[i]
+        if colour:
+            r, g, b = centers[i].astype(int)
+            char = f"\033[38;2;{r};{g};{b}m" + char + "\033[0m"
+        return char
 
-    img = data["img"]
-    centers = data["centers"]
-
-    # convert to ascii art
-    ascii_art = ""
-    for row in img:
-        ascii_row = ""
-        for i in row:
-            char = ascii_str[i]
-            if colour:
-                r, g, b, *_ = centers[i].astype(int)
-                char = rgb_str(char, r, g, b)
-
-            ascii_row = ascii_row + char
-        ascii_art = ascii_art + ascii_row + "\n"
-
-    return ascii_art[:-1]  # remove last newline
-
-
-def rgb_to_hex(r, g, b):
-    """Convert rgb values to hex string."""
-    return "#{:02x}{:02x}{:02x}".format(r, g, b)
+    return img_to_quantized_output(
+        path_to_image=path_to_image,
+        image_template=str_template,
+        pixel_formater=ascii_char_formater,
+        components=components,
+        resize=resize,
+        seed=seed,
+    )
 
 
 def img_to_html_ascii(
-    path_to_image,
-    out_html,
-    components=20,
-    resize=(None, None),
-    ascii_str="-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
-    seed=None,
-):
+    path_to_image: str,
+    path_to_html: str,
+    components: int = 20,
+    resize: ResizeType | None = None,
+    ascii_str: str = "-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
+    colour: bool = True,
+    seed: int | None = None,
+) -> None:
     """Convert image to ascii art in html format.
+
+    Parameters
+    ----------
+    path_to_image : str
+        Path to the image to be converted.
+    path_to_html : str
+        Path to output html file.
+    components : int
+        Number of components/characters to convert image into.
+    resize : (int, int)
+        Resizing the image. Each pixel will be an ascii character. None or
+        (None, None) retains default size. A number and None will retain the
+        original ratio.
+    ascii_str : str
+        The ascii characters to use. If string is longer than components, rest
+        of string is ignored.
+    """
+    if components > len(ascii_str):
+        raise ValueError(
+            "ascii_str is not long enough for the number of components specified."
+        )
+
+    def html_ascii_char_formater(i: int, centers: np.ndarray) -> str:
+        char = ascii_str[i]
+        if colour:
+            r, g, b = centers[i].astype(int)
+            hex_str = f"#{r:02x}{g:02x}{b:02x}"
+            char = f'<span style="color:{hex_str}">{char}</span>'
+        return char
+
+    html_str = img_to_quantized_output(
+        path_to_image=path_to_image,
+        image_template=html_str_template,
+        pixel_formater=html_ascii_char_formater,
+        components=components,
+        resize=resize,
+        seed=seed,
+    )
+
+    # Export to html file
+    if not path_to_html.endswith(".html"):
+        path_to_html += ".html"
+
+    with open(path_to_html, "w") as f:
+        f.write(html_str)
+
+
+def cartoon_filter(
+    path_to_image: str,
+    path_to_output: str,
+    components: int = 20,
+    resize: ResizeType | None = None,
+    seed: int | None = None,
+) -> None:
+    """Filter the image through a cartoon effect.
+
+    Parameters
+    ----------
+    path_to_image : str
+        Path to the image to be converted.
+    path_to_output : str
+        Path to output image file.
+    components : int
+        Number of components/characters to convert image into.
+    resize : (int, int)
+        Resizing the image. Each pixel will be an ascii character. None or
+        (None, None) retains default size. A number and None will retain the
+        original ratio.
+    seed : int
+        The random seed to use for KMeans clustering. Can be None.
+
+    """
+
+    def cartoon_char_formater(i: int, centers: np.ndarray) -> str:
+        return centers[i] / 255.0
+
+    quantized_colour_image = img_to_quantized_output(
+        path_to_image=path_to_image,
+        image_template=lambda x: x,
+        pixel_formater=cartoon_char_formater,
+        components=components,
+        resize=resize,
+        seed=seed,
+    )
+
+    # save image
+    plt.imsave(path_to_output, quantized_colour_image)
+
+
+def img_to_html_pixelart(
+    path_to_image: str,
+    path_to_html: str,
+    components: int = 20,
+    resize: ResizeType | None = None,
+    seed: int | None = None,
+) -> None:
+    """Convert image to pixel art.
 
     Parameters
     ----------
@@ -181,91 +360,30 @@ def img_to_html_ascii(
     components : int
         Number of components/characters to convert image into.
     resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. (None, None)
-        retains default size. A number and None will retain the original ratio.
-    ascii_str : str
-        The ascii characters to use. If string is longer than components, rest
-        of string is ignored.
-
-    Returns
-    -------
-    ascii_html_art : str
-        The image converted to ascii art in html format.
+        Resizing the image. Each pixel will be an ascii character. None or
+        (None, None) retains default size. A number and None will retain the
+        original ratio.
+    seed : int
+        The random seed to use for KMeans clustering. Can be None.
     """
 
-    if components > len(ascii_str):
-        raise ValueError(
-            "ascii_str is not long enough for the number of components specified."
-        )
+    def pixel_char_formater(i: int, centers: np.ndarray) -> str:
+        r, g, b = centers[i].astype(int)
+        hex_str = f"#{r:02x}{g:02x}{b:02x}"
+        return f'<span style="color:{hex_str}">█</span>'
 
-    img_obj = ImageManip(path_to_image=path_to_image, resize=resize)
-    img_obj.preprocess_img()
-    data = img_obj.fit(components, seed=seed)
-
-    img = data["img"]
-    centers = data["centers"]
-    hex_centers = [rgb_to_hex(*c.astype(int)) for c in centers]
-
-    ascii_art = ""
-    for row in img:
-        ascii_row = ""
-        for i in row:
-            char = ascii_str[i]
-            char = f'<span style="color:{hex_centers[i]}">{char}</span>'
-
-            ascii_row = ascii_row + char
-        ascii_art = ascii_art + ascii_row + "\n"
-
-    # HTML output
-    name = os.path.splitext(os.path.basename(path_to_image))[0]
-    final_html = final_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>{name}</title>
-    </head>
-    <body>
-        <pre style="font-family: monospace; font-size: 14px; line-height: 1;">{ascii_art}</pre>
-    </body>
-    </html>
-    """
+    pixel_output = img_to_quantized_output(
+        path_to_image=path_to_image,
+        image_template=html_str_template,
+        pixel_formater=pixel_char_formater,
+        components=components,
+        resize=resize,
+        seed=seed,
+    )
 
     # Export to html file
-    if not out_html.endswith(".html"):
-        out_html = out_html + ".html"
+    if not path_to_html.endswith(".html"):
+        path_to_html += ".html"
 
-    with open(f"{out_html}", "w") as f:
-        f.write(final_html)
-
-
-def cartoon_filter(
-    path_to_image,
-    out_image,
-    components=10,
-    resize=(None, None),
-    colours=None,
-    seed=None,
-):
-    """Filter the image through a cartoon effect."""
-
-    if colours is not None:
-        if len(colours) != len(components):
-            raise ValueError("Given colours are not the same length as components.")
-
-    img_obj = ImageManip(path_to_image=path_to_image, resize=resize)
-    img_obj.preprocess_img()
-    data = img_obj.fit(components, seed=seed)
-
-    # place all the rgb colours into the correct places
-    img = data["img"]
-    centers = data["centers"]
-    filt_img = []
-    for row in img:
-        filt_img_row = []
-        for pix in row:
-            filt_img_row.append(centers[pix])
-        filt_img.append(filt_img_row)
-    filt_img = np.array(filt_img)
-
-    # save image
-    plt.imsave(out_image, filt_img)
+    with open(path_to_html, "w") as f:
+        f.write(pixel_output)
