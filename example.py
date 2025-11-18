@@ -11,6 +11,9 @@ print(image_manip.quantized_to_pixelart_str(quantized_coco))
 image_manip.quantized_to_cartoon_file(quantized_coco, "coco_cartoon.png")
 image_manip.quantized_to_ascii_html(quantized_coco, "coco_ascii.html")
 image_manip.quantized_to_pixelart_html(quantized_coco, "coco_pixelart.html")
+image_manip.quantized_to_pixelart_html(
+    quantized_coco, "coco_big_pixelart.html", font_size=24
+)
 
 # Fringes Example
 

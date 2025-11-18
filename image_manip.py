@@ -228,6 +228,11 @@ def quantized_to_ascii_str(
         The image converted to ascii art.
     """
 
+    if len(ascii_str) < len(quantized_image.centers):
+        raise ValueError(
+            "ascii_str is not long enough for the number of k-means components specified."
+        )
+
     def ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
         if colour:
@@ -265,6 +270,11 @@ def quantized_to_ascii_html(
     colour : bool
         Whether to output ascii art in colour.
     """
+
+    if len(ascii_str) < len(quantized_image.centers):
+        raise ValueError(
+            "ascii_str is not long enough for the number of k-means components specified."
+        )
 
     def html_ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
@@ -306,19 +316,8 @@ def quantized_to_cartoon_file(
         The cartoon filtered image.
     """
 
-    cartoon_image = np.zeros(
-        (
-            quantized_image.image_data.shape[0],
-            quantized_image.image_data.shape[1],
-            3,
-        ),
-        dtype=np.float32,
-    )
-
-    for i in range(quantized_image.image_data.shape[0]):
-        for j in range(quantized_image.image_data.shape[1]):
-            v = quantized_image.image_data[i, j]
-            cartoon_image[i, j, :] = quantized_image.centers[v]
+    # Create cartoon image by mapping each pixel to its cluster center
+    cartoon_image = quantized_image.centers[quantized_image.image_data]
 
     # Convert float image in [0,1] to uint8 and save with PIL to avoid
     # partially-unknown typing on matplotlib.pyplot.imsave
