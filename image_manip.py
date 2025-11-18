@@ -1,3 +1,5 @@
+import functools
+
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
@@ -54,14 +56,14 @@ def str_template(x: NDArray[np.str_]) -> np.str_:
     return np.str_(final_str[:-1])
 
 
-def html_str_template(x: NDArray[np.str_]) -> np.str_:
+def html_str_template(x: NDArray[np.str_], font_size: int = 14) -> np.str_:
     """HTML string template function."""
     str_vals = str_template(x)
     final_html = f"""
     <!DOCTYPE html>
     <html>
     <body>
-        <pre style="font-family: monospace; font-size: 14px; line-height: 1ch;">{str_vals}</pre>
+        <pre style="font-family: monospace; font-size: {font_size}px; line-height: 1ch;">{str_vals}</pre>
     </body>
     </html>
     """
@@ -93,21 +95,16 @@ class ImageManipulate:
         image = Image.open(self.path_to_image)
         self.image = image.convert("RGB")
 
-    def resize(self, resize: ResizeType | None = None) -> None:
+    def resize(self, hresize: int | None, vresize: int | None) -> None:
         """Resize image.
 
         Parameters
         ----------
-        resize : (int, int)
-            Resizing the image. Each pixel will be an ascii character. None or
-            (None, None) retains default size. A number and None will retain the
-            original ratio.
+        hresize : int | None
+            Horizontal size to resize to. None retains original ratio.
+        vresize : int | None
+            Vertical size to resize to. None retains original ratio.
         """
-        if resize is None:
-            return
-
-        # resize
-        hresize, vresize = resize
         horig, vorig = self.image.size
         if hresize is None and vresize is not None:
             scale = vresize / vorig
@@ -248,6 +245,7 @@ def quantized_to_ascii_str(
 def quantized_to_ascii_html(
     quantized_image: QuantizedColourImage,
     path_to_html: str,
+    font_size: int = 14,
     ascii_str: str = "-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
     colour: bool = True,
 ) -> None:
@@ -259,6 +257,8 @@ def quantized_to_ascii_html(
         The quantized colour image.
     path_to_html : str
         Path to output html file.
+    font_size : int
+        Font size to use in html file.
     ascii_str : str
         The ascii characters to use. If string is longer than components, rest
         of string is ignored.
@@ -274,9 +274,10 @@ def quantized_to_ascii_html(
             char = f'<span style="color:{hex_str}">{char}</span>'
         return np.str_(char)
 
+    html_template = functools.partial(html_str_template, font_size=font_size)
     html_str = quantized_to_formatted_output(
         quantized_image=quantized_image,
-        image_template=html_str_template,
+        image_template=html_template,
         pixel_formater=html_ascii_char_formater,
     )
 
@@ -355,6 +356,7 @@ def quantized_to_pixelart_str(
 def quantized_to_pixelart_html(
     quantized_image: QuantizedColourImage,
     path_to_html: str,
+    font_size: int = 14,
 ) -> None:
     """Convert quantized image to pixel art.
 
@@ -362,6 +364,10 @@ def quantized_to_pixelart_html(
     ----------
     quantized_image : QuantizedColourImage
         The quantized colour image.
+    path_to_html : str
+        Path to output html file.
+    font_size : int
+        Font size to use in html file.
     """
 
     def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
@@ -369,9 +375,10 @@ def quantized_to_pixelart_html(
         hex_str = f"#{r:02x}{g:02x}{b:02x}"
         return np.str_(f'<span style="color:{hex_str}">█</span>')
 
+    html_template = functools.partial(html_str_template, font_size=font_size)
     pixel_output = quantized_to_formatted_output(
         quantized_image=quantized_image,
-        image_template=html_str_template,
+        image_template=html_template,
         pixel_formater=pixel_char_formater,
     )
 
