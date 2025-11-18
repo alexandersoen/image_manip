@@ -1,10 +1,9 @@
+import functools
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
 import numpy as np
-
 from numpy.typing import NDArray
-
 from PIL import Image
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -54,14 +53,14 @@ def str_template(x: NDArray[np.str_]) -> np.str_:
     return np.str_(final_str[:-1])
 
 
-def html_str_template(x: NDArray[np.str_]) -> np.str_:
+def html_str_template(x: NDArray[np.str_], font_size: int = 14) -> np.str_:
     """HTML string template function."""
     str_vals = str_template(x)
     final_html = f"""
     <!DOCTYPE html>
     <html>
     <body>
-        <pre style="font-family: monospace; font-size: 14px; line-height: 1ch;">{str_vals}</pre>
+        <pre style="font-family: monospace; font-size: {font_size}px; line-height: 1ch;">{str_vals}</pre>
     </body>
     </html>
     """
@@ -93,21 +92,16 @@ class ImageManipulate:
         image = Image.open(self.path_to_image)
         self.image = image.convert("RGB")
 
-    def resize(self, resize: ResizeType | None = None) -> None:
+    def resize(self, hresize: int | None, vresize: int | None) -> None:
         """Resize image.
 
         Parameters
         ----------
-        resize : (int, int)
-            Resizing the image. Each pixel will be an ascii character. None or
-            (None, None) retains default size. A number and None will retain the
-            original ratio.
+        hresize : int | None
+            Horizontal size to resize to. None retains original ratio.
+        vresize : int | None
+            Vertical size to resize to. None retains original ratio.
         """
-        if resize is None:
-            return
-
-        # resize
-        hresize, vresize = resize
         horig, vorig = self.image.size
         if hresize is None and vresize is not None:
             scale = vresize / vorig
@@ -195,16 +189,16 @@ def quantized_to_formatted_output(
     formatted_str : str
         The image converted to formatted string representation.
     """
+    # Create format array
+    format_array = np.array(
+        [
+            pixel_formater(i, quantized_image.centers)
+            for i in range(len(quantized_image.centers))
+        ]
+    )
 
-    formatted_output: list[list[U]] = []
-    for row in quantized_image.image_data:
-        output_row: list[U] = []
-        for v in row:
-            pixel = pixel_formater(v, quantized_image.centers)
-            output_row.append(pixel)
-        formatted_output.append(output_row)
-    formatted_array: NDArray[U] = np.array(formatted_output)
-
+    # Map format array to image data
+    formatted_array = format_array[quantized_image.image_data]
     return image_template(formatted_array)
 
 
@@ -231,6 +225,11 @@ def quantized_to_ascii_str(
         The image converted to ascii art.
     """
 
+    if len(ascii_str) < len(quantized_image.centers):
+        raise ValueError(
+            "ascii_str is not long enough for the number of k-means components specified."
+        )
+
     def ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
         if colour:
@@ -248,6 +247,7 @@ def quantized_to_ascii_str(
 def quantized_to_ascii_html(
     quantized_image: QuantizedColourImage,
     path_to_html: str,
+    font_size: int = 14,
     ascii_str: str = "-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
     colour: bool = True,
 ) -> None:
@@ -259,12 +259,19 @@ def quantized_to_ascii_html(
         The quantized colour image.
     path_to_html : str
         Path to output html file.
+    font_size : int
+        Font size to use in html file.
     ascii_str : str
         The ascii characters to use. If string is longer than components, rest
         of string is ignored.
     colour : bool
         Whether to output ascii art in colour.
     """
+
+    if len(ascii_str) < len(quantized_image.centers):
+        raise ValueError(
+            "ascii_str is not long enough for the number of k-means components specified."
+        )
 
     def html_ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
@@ -274,9 +281,10 @@ def quantized_to_ascii_html(
             char = f'<span style="color:{hex_str}">{char}</span>'
         return np.str_(char)
 
+    html_template = functools.partial(html_str_template, font_size=font_size)
     html_str = quantized_to_formatted_output(
         quantized_image=quantized_image,
-        image_template=html_str_template,
+        image_template=html_template,
         pixel_formater=html_ascii_char_formater,
     )
 
@@ -305,22 +313,16 @@ def quantized_to_cartoon_file(
         The cartoon filtered image.
     """
 
-    cartoon_image = np.zeros(
-        (
-            quantized_image.image_data.shape[0],
-            quantized_image.image_data.shape[1],
-            3,
-        ),
-        dtype=np.float32,
+    def cartoon_char_formater(i: int, centers: np.ndarray) -> np.str_:
+        return centers[i]
+
+    cartoon_image = quantized_to_formatted_output(
+        quantized_image=quantized_image,
+        image_template=lambda x: x,
+        pixel_formater=cartoon_char_formater,
     )
 
-    for i in range(quantized_image.image_data.shape[0]):
-        for j in range(quantized_image.image_data.shape[1]):
-            v = quantized_image.image_data[i, j]
-            cartoon_image[i, j, :] = quantized_image.centers[v]
-
-    # Convert float image in [0,1] to uint8 and save with PIL to avoid
-    # partially-unknown typing on matplotlib.pyplot.imsave
+    # Convert float image in [0,1] to uint8 and save with PIL
     out_img = cartoon_image.astype(np.uint8)
     Image.fromarray(out_img).save(path_to_output)
 
@@ -355,6 +357,7 @@ def quantized_to_pixelart_str(
 def quantized_to_pixelart_html(
     quantized_image: QuantizedColourImage,
     path_to_html: str,
+    font_size: int = 14,
 ) -> None:
     """Convert quantized image to pixel art.
 
@@ -362,6 +365,10 @@ def quantized_to_pixelart_html(
     ----------
     quantized_image : QuantizedColourImage
         The quantized colour image.
+    path_to_html : str
+        Path to output html file.
+    font_size : int
+        Font size to use in html file.
     """
 
     def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
@@ -369,9 +376,10 @@ def quantized_to_pixelart_html(
         hex_str = f"#{r:02x}{g:02x}{b:02x}"
         return np.str_(f'<span style="color:{hex_str}">█</span>')
 
+    html_template = functools.partial(html_str_template, font_size=font_size)
     pixel_output = quantized_to_formatted_output(
         quantized_image=quantized_image,
-        image_template=html_str_template,
+        image_template=html_template,
         pixel_formater=pixel_char_formater,
     )
 
