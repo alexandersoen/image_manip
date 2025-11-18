@@ -1,9 +1,22 @@
+from __future__ import annotations
+
 import functools
 from dataclasses import dataclass
-from typing import Optional, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
+
+# Fallback for Protocol import
+try:
+    from typing import Protocol  # type: ignore
+except Exception:  # pragma: no cover
+    from typing_extensions import Protocol  # type: ignore
 
 import numpy as np
-from numpy.typing import NDArray
+
+# Fallback for NDArray type hinting
+if TYPE_CHECKING:
+    from numpy.typing import NDArray  # type: ignore
+else:
+    NDArray = Any  # type: ignore
 from PIL import Image, ImageOps
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
