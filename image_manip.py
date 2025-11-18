@@ -12,8 +12,6 @@ from sklearn.preprocessing import StandardScaler
 ### Type Definitions ##########################################################
 ###############################################################################
 
-ResizeType = tuple[int | None, int | None]
-
 T = TypeVar("T", covariant=True)
 U = TypeVar("U", bound=np.generic, contravariant=True)
 V = TypeVar("V", bound=np.generic, covariant=True)
