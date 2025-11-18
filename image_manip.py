@@ -192,16 +192,16 @@ def quantized_to_formatted_output(
     formatted_str : str
         The image converted to formatted string representation.
     """
+    # Create format array
+    format_array = np.array(
+        [
+            pixel_formater(i, quantized_image.centers)
+            for i in range(len(quantized_image.centers))
+        ]
+    )
 
-    formatted_output: list[list[U]] = []
-    for row in quantized_image.image_data:
-        output_row: list[U] = []
-        for v in row:
-            pixel = pixel_formater(v, quantized_image.centers)
-            output_row.append(pixel)
-        formatted_output.append(output_row)
-    formatted_array: NDArray[U] = np.array(formatted_output)
-
+    # Map format array to image data
+    formatted_array = format_array[quantized_image.image_data]
     return image_template(formatted_array)
 
 
@@ -316,11 +316,16 @@ def quantized_to_cartoon_file(
         The cartoon filtered image.
     """
 
-    # Create cartoon image by mapping each pixel to its cluster center
-    cartoon_image = quantized_image.centers[quantized_image.image_data]
+    def cartoon_char_formater(i: int, centers: np.ndarray) -> np.str_:
+        return centers[i]
 
-    # Convert float image in [0,1] to uint8 and save with PIL to avoid
-    # partially-unknown typing on matplotlib.pyplot.imsave
+    cartoon_image = quantized_to_formatted_output(
+        quantized_image=quantized_image,
+        image_template=lambda x: x,
+        pixel_formater=cartoon_char_formater,
+    )
+
+    # Convert float image in [0,1] to uint8 and save with PIL
     out_img = cartoon_image.astype(np.uint8)
     Image.fromarray(out_img).save(path_to_output)
 
