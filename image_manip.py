@@ -1,6 +1,6 @@
 import functools
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Optional, Protocol, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -90,14 +90,14 @@ class ImageManipulate:
         image = Image.open(self.path_to_image)
         self.image = image.convert("RGB")
 
-    def resize(self, hresize: int | None, vresize: int | None) -> None:
+    def resize(self, hresize: Optional[int], vresize: Optional[int]) -> None:
         """Resize image.
 
         Parameters
         ----------
-        hresize : int | None
+        hresize : Optional[int]
             Horizontal size to resize to. None retains original ratio.
-        vresize : int | None
+        vresize : Optional[int]
             Vertical size to resize to. None retains original ratio.
         """
         horig, vorig = self.image.size
@@ -120,7 +120,7 @@ class ImageManipulate:
         self.image = self.image.resize(resize)
 
     def get_colour_quantize_image(
-        self, components: int, seed: int | None
+        self, components: int, seed: Optional[int]
     ) -> QuantizedColourImage:
         """Quantize the image colour with k means clustering.
 
@@ -128,7 +128,7 @@ class ImageManipulate:
         ----------
         components : int
             Number of components/characters to convert image into.
-        seed : int
+        seed : Optional[int]
             The random seed to use for KMeans clustering. Can be None.
 
         Returns
