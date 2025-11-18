@@ -1,32 +1,29 @@
 import image_manip
 
+# Coco Example
 
-print(image_manip.img_to_ascii("fringes_cutout.png", resize=(150, None)))
+image_coco = image_manip.ImageManipulate("coco_1.jpg")
+image_coco.resize((150, None))
+quantized_coco = image_coco.get_colour_quantize_image(20, seed=None)
 
-image_manip.cartoon_filter("screenshot.png", "filtered_ss.png", resize=(800, None))
+print(image_manip.quantized_to_ascii_str(quantized_coco))
+print(image_manip.quantized_to_pixelart_str(quantized_coco))
+image_manip.quantized_to_cartoon_file(quantized_coco, "coco_cartoon.png")
+image_manip.quantized_to_ascii_html(quantized_coco, "coco_ascii.html")
+image_manip.quantized_to_pixelart_html(quantized_coco, "coco_pixelart.html")
 
-image_manip.img_to_html_ascii(
-    "screenshot.png",
-    "screenshot.html",
-    resize=(150, None),
-)
+# Fringes Example
 
-image_manip.img_to_html_ascii(
-    "coco_1.jpg",
-    "coco_1.html",
-    resize=(150, None),
-)
+image_fringes = image_manip.ImageManipulate("fringes_cutout.png")
+image_fringes.resize((150, None))
+quantized_fringes = image_fringes.get_colour_quantize_image(20, seed=None)
 
+print(image_manip.quantized_to_ascii_str(quantized_fringes))
 
-image_manip.img_to_html_ascii(
-    "fringes_cutout.png",
-    "fringes_cutout.html",
-    resize=(150, None),
-)
+# Screenshot Example
 
+image_screenshot = image_manip.ImageManipulate("screenshot.png")
+image_screenshot.resize((800, None))
+quantized_screenshot = image_screenshot.get_colour_quantize_image(20, seed=None)
 
-image_manip.img_to_html_pixelart(
-    "coco_1.jpg",
-    "coco_1_pixel.html",
-    resize=(150, None),
-)
+image_manip.quantized_to_cartoon_file(quantized_screenshot, "filtered_ss.png")

@@ -171,96 +171,66 @@ class ImageManipulate:
 
 
 ###############################################################################
-### Image Manipulation Functions ##############################################
+### Quantize Output Functions #################################################
 ###############################################################################
 
 
-def img_to_quantized_output(
-    path_to_image: str,
+def quantized_to_formatted_output(
+    quantized_image: QuantizedColourImage,
     image_template: ImageTemplate[T, U],
     pixel_formater: CharFormater[U],
-    components: int = 20,
-    resize: ResizeType | None = None,
-    seed: int | None = None,
 ) -> T:
-    """Convert image to quantized string representation.
+    """Convert quantized image to formatted string representation.
 
     Parameters
     ----------
-    path_to_image : str
-        Path to the image to be converted.
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
     str_template : function
         Function to format the final string. If None, default function is used.
     char_formater : function
         Function to format each character. If None, default function is used.
-    components : int
-        Number of components/characters to convert image into.
-    resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. None or
-        (None, None) retains default size. A number and None will retain the
-        original ratio.
-    seed : int
-        The random seed to use for KMeans clustering. Can be None.
 
     Returns
     -------
-    quantized_str : str
-        The image converted to quantized string representation.
+    formatted_str : str
+        The image converted to formatted string representation.
     """
 
-    img_obj = ImageManipulate(path_to_image=path_to_image)
-    img_obj.resize(resize=resize)
-    quantized_color_image = img_obj.get_colour_quantize_image(components, seed=seed)
-
-    # convert to quantized string
-
-    quantized_output = []
-    for row in quantized_color_image.image_data:
+    formatted_output = []
+    for row in quantized_image.image_data:
         output_row = []
         for v in row:
-            pixel = pixel_formater(v, quantized_color_image.centers)
+            pixel = pixel_formater(v, quantized_image.centers)
             output_row.append(pixel)
-        quantized_output.append(output_row)
-    quantized_array = np.array(quantized_output)
+        formatted_output.append(output_row)
+    formatted_array = np.array(formatted_output)
 
-    return image_template(quantized_array)
+    return image_template(formatted_array)
 
 
-def img_to_ascii(
-    path_to_image: str,
-    components: int = 20,
-    resize: ResizeType | None = None,
+def quantized_to_ascii_str(
+    quantized_image: QuantizedColourImage,
     ascii_str: str = "-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
     colour: bool = True,
-    seed: int | None = None,
-):
-    """Convert image to ascii art.
+) -> np.str_:
+    """Convert quantized image to ascii art.
 
     Parameters
     ----------
-    path_to_image : str
-        Path to the image to be converted.
-    components : int
-        Number of components/characters to convert image into.
-    resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. None or
-        (None, None) retains default size. A number and None will retain the
-        original ratio.
-    colour : bool
-        Whether to output ascii art in colour.
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
     ascii_str : str
         The ascii characters to use. If string is longer than components, rest
         of string is ignored.
+    colour : bool
+        Whether to output ascii art in colour.
 
     Returns
     -------
     ascii_art : str
         The image converted to ascii art.
     """
-    if components > len(ascii_str):
-        raise ValueError(
-            "ascii_str is not long enough for the number of components specified."
-        )
 
     def ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
@@ -269,47 +239,33 @@ def img_to_ascii(
             char = f"\033[38;2;{r};{g};{b}m" + char + "\033[0m"
         return np.str_(char)
 
-    return img_to_quantized_output(
-        path_to_image=path_to_image,
+    return quantized_to_formatted_output(
+        quantized_image=quantized_image,
         image_template=str_template,
         pixel_formater=ascii_char_formater,
-        components=components,
-        resize=resize,
-        seed=seed,
     )
 
 
-def img_to_html_ascii(
-    path_to_image: str,
+def quantized_to_ascii_html(
+    quantized_image: QuantizedColourImage,
     path_to_html: str,
-    components: int = 20,
-    resize: ResizeType | None = None,
     ascii_str: str = "-:`!@#$%^&*0123456789qwertyuiopasdfghjklzxcvbnm",
     colour: bool = True,
-    seed: int | None = None,
 ) -> None:
-    """Convert image to ascii art in html format.
+    """Convert quantized image to ascii art in html format.
 
     Parameters
     ----------
-    path_to_image : str
-        Path to the image to be converted.
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
     path_to_html : str
         Path to output html file.
-    components : int
-        Number of components/characters to convert image into.
-    resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. None or
-        (None, None) retains default size. A number and None will retain the
-        original ratio.
     ascii_str : str
         The ascii characters to use. If string is longer than components, rest
         of string is ignored.
+    colour : bool
+        Whether to output ascii art in colour.
     """
-    if components > len(ascii_str):
-        raise ValueError(
-            "ascii_str is not long enough for the number of components specified."
-        )
 
     def html_ascii_char_formater(i: int, centers: np.ndarray) -> np.str_:
         char = ascii_str[i]
@@ -319,13 +275,10 @@ def img_to_html_ascii(
             char = f'<span style="color:{hex_str}">{char}</span>'
         return np.str_(char)
 
-    html_str = img_to_quantized_output(
-        path_to_image=path_to_image,
+    html_str = quantized_to_formatted_output(
+        quantized_image=quantized_image,
         image_template=html_str_template,
         pixel_formater=html_ascii_char_formater,
-        components=components,
-        resize=resize,
-        seed=seed,
     )
 
     # Export to html file
@@ -336,69 +289,77 @@ def img_to_html_ascii(
         f.write(html_str)
 
 
-def cartoon_filter(
-    path_to_image: str,
+def quantized_to_cartoon_file(
+    quantized_image: QuantizedColourImage,
     path_to_output: str,
-    components: int = 20,
-    resize: ResizeType | None = None,
-    seed: int | None = None,
 ) -> None:
-    """Filter the image through a cartoon effect.
+    """Convert quantized image to cartoon filtered image.
 
     Parameters
     ----------
-    path_to_image : str
-        Path to the image to be converted.
-    path_to_output : str
-        Path to output image file.
-    components : int
-        Number of components/characters to convert image into.
-    resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. None or
-        (None, None) retains default size. A number and None will retain the
-        original ratio.
-    seed : int
-        The random seed to use for KMeans clustering. Can be None.
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
 
+    Returns
+    -------
+    cartoon_image : NDArray[np.float32]
+        The cartoon filtered image.
     """
 
-    def cartoon_char_formater(i: int, centers: np.ndarray) -> np.float32:
-        return centers[i] / 255.0
-
-    quantized_colour_image = img_to_quantized_output(
-        path_to_image=path_to_image,
-        image_template=lambda x: x,
-        pixel_formater=cartoon_char_formater,
-        components=components,
-        resize=resize,
-        seed=seed,
+    cartoon_image = np.zeros(
+        (
+            quantized_image.image_data.shape[0],
+            quantized_image.image_data.shape[1],
+            3,
+        ),
+        dtype=np.float32,
     )
 
-    # save image
-    plt.imsave(path_to_output, quantized_colour_image)
+    for i in range(quantized_image.image_data.shape[0]):
+        for j in range(quantized_image.image_data.shape[1]):
+            v = quantized_image.image_data[i, j]
+            cartoon_image[i, j, :] = quantized_image.centers[v] / 255.0
+
+    plt.imsave(path_to_output, cartoon_image)
 
 
-def img_to_html_pixelart(
-    path_to_image: str,
-    path_to_html: str,
-    components: int = 20,
-    resize: ResizeType | None = None,
-    seed: int | None = None,
-) -> None:
-    """Convert image to pixel art.
+def quantized_to_pixelart_str(
+    quantized_image: QuantizedColourImage,
+) -> np.str_:
+    """Convert quantized image to pixel art.
 
     Parameters
     ----------
-    path_to_image : str
-        Path to the image to be converted.
-    components : int
-        Number of components/characters to convert image into.
-    resize : (int, int)
-        Resizing the image. Each pixel will be an ascii character. None or
-        (None, None) retains default size. A number and None will retain the
-        original ratio.
-    seed : int
-        The random seed to use for KMeans clustering. Can be None.
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
+
+    Returns
+    -------
+    pixel_art_image : NDArray[np.uint8]
+        The pixel art image.
+    """
+
+    def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
+        r, g, b = centers[i].astype(int)
+        return np.str_(f"\033[38;2;{r};{g};{b}m█\033[0m")
+
+    return quantized_to_formatted_output(
+        quantized_image=quantized_image,
+        image_template=str_template,
+        pixel_formater=pixel_char_formater,
+    )
+
+
+def quantized_to_pixelart_html(
+    quantized_image: QuantizedColourImage,
+    path_to_html: str,
+) -> None:
+    """Convert quantized image to pixel art.
+
+    Parameters
+    ----------
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
     """
 
     def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
@@ -406,13 +367,10 @@ def img_to_html_pixelart(
         hex_str = f"#{r:02x}{g:02x}{b:02x}"
         return np.str_(f'<span style="color:{hex_str}">█</span>')
 
-    pixel_output = img_to_quantized_output(
-        path_to_image=path_to_image,
+    pixel_output = quantized_to_formatted_output(
+        quantized_image=quantized_image,
         image_template=html_str_template,
         pixel_formater=pixel_char_formater,
-        components=components,
-        resize=resize,
-        seed=seed,
     )
 
     # Export to html file
