@@ -1,12 +1,9 @@
 import functools
-
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
 import numpy as np
-
 from numpy.typing import NDArray
-
 from PIL import Image
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
