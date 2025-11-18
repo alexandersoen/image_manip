@@ -135,7 +135,7 @@ class ImageManipulate:
         self.image = self.image.resize(resize)
 
     def get_colour_quantize_image(
-        self, components: int, seed: Optional[int]
+        self, components: int = 20, seed: Optional[int] = None
     ) -> QuantizedColourImage:
         """Quantize the image colour with k means clustering.
 
