@@ -4,7 +4,7 @@ from typing import Optional, Protocol, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
+from PIL import Image, ImageOps
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
@@ -88,6 +88,8 @@ class ImageManipulate:
         """Load image data from path."""
 
         image = Image.open(self.path_to_image)
+        image = ImageOps.exif_transpose(image)
+
         self.image = image.convert("RGB")
 
     def resize(self, hresize: Optional[int], vresize: Optional[int]) -> None:
