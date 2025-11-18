@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from numpy.typing import NDArray
@@ -197,14 +196,14 @@ def quantized_to_formatted_output(
         The image converted to formatted string representation.
     """
 
-    formatted_output = []
+    formatted_output: list[list[U]] = []
     for row in quantized_image.image_data:
-        output_row = []
+        output_row: list[U] = []
         for v in row:
             pixel = pixel_formater(v, quantized_image.centers)
             output_row.append(pixel)
         formatted_output.append(output_row)
-    formatted_array = np.array(formatted_output)
+    formatted_array: NDArray[U] = np.array(formatted_output)
 
     return image_template(formatted_array)
 
@@ -318,9 +317,12 @@ def quantized_to_cartoon_file(
     for i in range(quantized_image.image_data.shape[0]):
         for j in range(quantized_image.image_data.shape[1]):
             v = quantized_image.image_data[i, j]
-            cartoon_image[i, j, :] = quantized_image.centers[v] / 255.0
+            cartoon_image[i, j, :] = quantized_image.centers[v]
 
-    plt.imsave(path_to_output, cartoon_image)
+    # Convert float image in [0,1] to uint8 and save with PIL to avoid
+    # partially-unknown typing on matplotlib.pyplot.imsave
+    out_img = cartoon_image.astype(np.uint8)
+    Image.fromarray(out_img).save(path_to_output)
 
 
 def quantized_to_pixelart_str(
