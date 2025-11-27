@@ -8,7 +8,6 @@ quantized_coco = image_coco.get_colour_quantize_image(components=20, seed=None)
 
 print(image_manip.quantized_to_ascii_str(quantized_coco))
 print(image_manip.quantized_to_pixelart_str(quantized_coco))
-image_manip.quantized_to_cartoon_file(quantized_coco, "coco_cartoon.png")
 image_manip.quantized_to_ascii_html(quantized_coco, "coco_ascii.html")
 image_manip.quantized_to_pixelart_html(quantized_coco, "coco_pixelart.html")
 image_manip.quantized_to_pixelart_html(

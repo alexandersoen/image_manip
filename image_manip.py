@@ -342,6 +342,7 @@ def quantized_to_cartoon_file(
 
 def quantized_to_pixelart_str(
     quantized_image: QuantizedColourImage,
+    pixel_char: str = "█",
 ) -> np.str_:
     """Convert quantized image to pixel art.
 
@@ -349,6 +350,8 @@ def quantized_to_pixelart_str(
     ----------
     quantized_image : QuantizedColourImage
         The quantized colour image.
+    pixel_char: str
+        Character for pixel art.
 
     Returns
     -------
@@ -356,9 +359,12 @@ def quantized_to_pixelart_str(
         The pixel art image.
     """
 
+    if len(pixel_char) != 1:
+        raise ValueError("pixel_char is invalid, must be str of len 1.")
+
     def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
         r, g, b = centers[i].astype(int)
-        return np.str_(f"\033[38;2;{r};{g};{b}m█\033[0m")
+        return np.str_(f"\033[38;2;{r};{g};{b}m{pixel_char}\033[0m")
 
     return quantized_to_formatted_output(
         quantized_image=quantized_image,
@@ -370,6 +376,7 @@ def quantized_to_pixelart_str(
 def quantized_to_pixelart_html(
     quantized_image: QuantizedColourImage,
     path_to_html: str,
+    pixel_char: str = "█",
     font_size: int = 14,
 ) -> None:
     """Convert quantized image to pixel art.
@@ -380,14 +387,19 @@ def quantized_to_pixelart_html(
         The quantized colour image.
     path_to_html : str
         Path to output html file.
+    pixel_char: str
+        Character for pixel art.
     font_size : int
         Font size to use in html file.
     """
 
+    if len(pixel_char) != 1:
+        raise ValueError("pixel_char is invalid, must be str of len 1.")
+
     def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
         r, g, b = centers[i].astype(int)
         hex_str = f"#{r:02x}{g:02x}{b:02x}"
-        return np.str_(f'<span style="color:{hex_str}">█</span>')
+        return np.str_(f'<span style="background-color: {hex_str}; color:{hex_str}">{pixel_char}</span>')
 
     html_template = functools.partial(html_str_template, font_size=font_size)
     pixel_output = quantized_to_formatted_output(
@@ -395,6 +407,58 @@ def quantized_to_pixelart_html(
         image_template=html_template,
         pixel_formater=pixel_char_formater,
     )
+
+    # Export to html file
+    if not path_to_html.endswith(".html"):
+        path_to_html += ".html"
+
+    with open(path_to_html, "w") as f:
+        f.write(pixel_output)
+
+
+
+def quantized_to_pixelcycleart_html(
+    quantized_image: QuantizedColourImage,
+    path_to_html: str,
+    pixel_char: str = "█",
+    font_size: int = 14,
+) -> None:
+    """Convert quantized image to pixel art.
+
+    Parameters
+    ----------
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
+    path_to_html : str
+        Path to output html file.
+    pixel_char: str
+        Character for pixel art.
+    font_size : int
+        Font size to use in html file.
+    """
+
+    if len(pixel_char) != 1:
+        raise ValueError("pixel_char is invalid, must be str of len 1.")
+
+    import itertools
+    pixel_chars = itertools.cycle("FIKA! ")
+    def pixel_char_formater(i: int, centers: np.ndarray) -> np.str_:
+        pixel_char = next(pixel_chars)
+
+        r, g, b = centers[i].astype(int)
+        hex_str = f"#{r:02x}{g:02x}{b:02x}"
+        return np.str_(f'<span style="background-color: {hex_str}; color:{hex_str}">{pixel_char}</span>')
+
+
+    pixel_output = []
+    for row in quantized_image.image_data:
+        output_row = []
+        for v in row:
+            pixel = pixel_char_formater(v, quantized_image.centers)
+            output_row.append(pixel)
+        pixel_output.append(output_row)
+    pixel_output = np.array(pixel_output)
+    pixel_output = html_str_template(pixel_output, font_size=font_size)
 
     # Export to html file
     if not path_to_html.endswith(".html"):
