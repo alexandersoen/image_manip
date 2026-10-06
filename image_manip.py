@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import itertools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterator, Literal, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Iterator, Literal, Optional, Sequence, TypeVar
 
 # Fallback for Protocol import
 try:
@@ -39,6 +39,20 @@ class QuantizedColourImage:
     centers: NDArray[np.float32]
 
 
+# First value, second as repeats
+RLECode = list[tuple[int, int]]
+
+
+@dataclass
+class QuantizedColourRLE:
+    """Dataclass for quantized run-length encoding of an image.
+    For simplicity, it is assumed that each row of the image data gets its own RLE code.
+    """
+
+    rle_codes: list[RLECode]
+    centers: NDArray[np.float32]
+
+
 PixelFormat = Literal["single", "cycle"]
 
 ###############################################################################
@@ -47,11 +61,42 @@ PixelFormat = Literal["single", "cycle"]
 
 
 class ImageTemplate(Protocol[T, U]):
-    def __call__(self, x: NDArray[U]) -> T: ...
+    def __call__(self, x: Sequence[Sequence[U]]) -> T: ...
 
 
 class CharFormater(Protocol[V]):
     def __call__(self, i: int, centers: NDArray[np.float32]) -> V: ...
+
+
+class RLECodeFormater(Protocol[V]):
+    def __call__(self, i: int, count: int, centers: NDArray[np.float32]) -> V: ...
+
+
+###############################################################################
+### Quantized Helpers #########################################################
+###############################################################################
+
+
+def from_image_to_rle(image: QuantizedColourImage) -> QuantizedColourRLE:
+    rle_codes = []
+    for row in image.image_data:
+        cur_code = []
+        cur_v = row[0]
+        cur_count = 0
+
+        for v in row:
+            if v != cur_v:
+                cur_code.append((cur_v, cur_count))
+
+                cur_v = v
+                cur_count = 0
+
+            cur_count += 1
+
+        cur_code.append((cur_v, cur_count))
+        rle_codes.append(cur_code)
+
+    return QuantizedColourRLE(rle_codes=rle_codes, centers=image.centers)
 
 
 ###############################################################################
@@ -59,7 +104,7 @@ class CharFormater(Protocol[V]):
 ###############################################################################
 
 
-def str_template(x: NDArray[np.str_]) -> np.str_:
+def str_template(x: Sequence[Sequence[np.str_]]) -> np.str_:
     """String template function."""
     final_str = ""
     for row in x:
@@ -67,7 +112,7 @@ def str_template(x: NDArray[np.str_]) -> np.str_:
     return np.str_(final_str[:-1])
 
 
-def html_str_template(x: NDArray[np.str_], font_size: int = 14) -> np.str_:
+def html_str_template(x: Sequence[Sequence[np.str_]], font_size: int = 14) -> np.str_:
     """HTML string template function."""
     str_vals = str_template(x)
     final_html = f"""
@@ -171,7 +216,11 @@ class ImageManipulate:
         # this seems to keep ordering correct as opposed to predict
         # important for cartoon filter, not so much ascii art
         image_quantized = kmeans.labels_
+        if image_quantized is None:
+            raise ValueError("KMeans resulted in no labels")
+
         image_quantized = image_quantized.reshape(vpx, hpx)
+        image_quantized = np.array(image_quantized, dtype=int)
 
         return QuantizedColourImage(
             image_data=image_quantized,
@@ -184,7 +233,7 @@ class ImageManipulate:
 ###############################################################################
 
 
-def quantized_to_formatted_output(
+def quantized_image_to_formatted_output(
     quantized_image: QuantizedColourImage,
     image_template: ImageTemplate[T, U],
     pixel_formater: CharFormater[U],
@@ -196,9 +245,9 @@ def quantized_to_formatted_output(
     quantized_image : QuantizedColourImage
         The quantized colour image.
     str_template : function
-        Function to format the final string. If None, default function is used.
+        Function to format the final string.
     char_formater : function
-        Function to format each character. If None, default function is used.
+        Function to format each character.
 
     Returns
     -------
@@ -212,7 +261,37 @@ def quantized_to_formatted_output(
             pixel = pixel_formater(v, quantized_image.centers)
             output_row.append(pixel)
         pixel_output.append(output_row)
-    pixel_output = np.array(pixel_output)
+    return image_template(pixel_output)
+
+
+def quantized_rle_codes_to_formatted_output(
+    quantized_rle_codes: QuantizedColourRLE,
+    image_template: ImageTemplate[T, U],
+    code_formater: RLECodeFormater[U],
+) -> T:
+    """Convert quantized image to formatted string representation.
+
+    Parameters
+    ----------
+    quantized_rle_codes : QuantizedColourRLE
+        The quantized colour image as a RLE code.
+    str_template : function
+        Function to format the final string.
+    code_formater : function
+        Function to format each RLE code.
+
+    Returns
+    -------
+    formatted_str : str
+        The image converted to formatted string representation.
+    """
+    pixel_output = []
+    for rle in quantized_rle_codes.rle_codes:
+        output_row = []
+        for i, c in rle:
+            block = code_formater(i, c, quantized_rle_codes.centers)
+            output_row.append(block)
+        pixel_output.append(output_row)
     return image_template(pixel_output)
 
 
@@ -251,7 +330,7 @@ def quantized_to_ascii_str(
             char = f"\033[38;2;{r};{g};{b}m" + char + "\033[0m"
         return np.str_(char)
 
-    return quantized_to_formatted_output(
+    return quantized_image_to_formatted_output(
         quantized_image=quantized_image,
         image_template=str_template,
         pixel_formater=ascii_char_formater,
@@ -296,7 +375,7 @@ def quantized_to_ascii_html(
         return np.str_(char)
 
     html_template = functools.partial(html_str_template, font_size=font_size)
-    html_str = quantized_to_formatted_output(
+    html_str = quantized_image_to_formatted_output(
         quantized_image=quantized_image,
         image_template=html_template,
         pixel_formater=html_ascii_char_formater,
@@ -330,11 +409,16 @@ def quantized_to_cartoon_file(
     def cartoon_char_formater(i: int, centers: np.ndarray) -> np.str_:
         return centers[i]
 
-    cartoon_image = quantized_to_formatted_output(
+    cartoon_image = quantized_image_to_formatted_output(
         quantized_image=quantized_image,
         image_template=lambda x: x,
         pixel_formater=cartoon_char_formater,
     )
+
+    try:
+        cartoon_image = np.array(cartoon_image)
+    except Exception:
+        raise ValueError("formatted output shape error")
 
     # Convert float image in [0,1] to uint8 and save with PIL
     out_img = cartoon_image.astype(np.uint8)
@@ -366,8 +450,6 @@ def _pixel_generator(
         pixel_gen = itertools.repeat(pixel_chars)
     elif pixel_format == "cycle":
         pixel_gen = itertools.cycle(pixel_chars)
-    else:
-        raise ValueError("pixel_format is invalid.")
 
     return pixel_gen
 
@@ -400,7 +482,7 @@ def quantized_to_pixelart_str(
         r, g, b = centers[i].astype(int)
         return np.str_(f"\033[38;2;{r};{g};{b}m{pixel_char}\033[0m")
 
-    return quantized_to_formatted_output(
+    return quantized_image_to_formatted_output(
         quantized_image=quantized_image,
         image_template=str_template,
         pixel_formater=pixel_char_formater,
@@ -440,10 +522,60 @@ def quantized_to_pixelart_html(
         )
 
     html_template = functools.partial(html_str_template, font_size=font_size)
-    pixel_output = quantized_to_formatted_output(
+    pixel_output = quantized_image_to_formatted_output(
         quantized_image=quantized_image,
         image_template=html_template,
         pixel_formater=pixel_char_formater,
+    )
+
+    # Export to html file
+    if not path_to_html.endswith(".html"):
+        path_to_html += ".html"
+
+    with open(path_to_html, "w") as f:
+        f.write(pixel_output)
+
+
+def quantized_to_compact_pixelart_html(
+    quantized_image: QuantizedColourImage,
+    path_to_html: str,
+    pixel_chars: str = "█",
+    pixel_format: PixelFormat = "single",
+    font_size: int = 14,
+) -> None:
+    """Convert quantized image to pixel art.
+
+    Parameters
+    ----------
+    quantized_image : QuantizedColourImage
+        The quantized colour image.
+    path_to_html : str
+        Path to output html file.
+    pixel_chars: str
+        Character(s) for pixel art.
+    pixel_format : PixelFormat
+        Pixel format to use.
+    font_size : int
+        Font size to use in html file.
+    """
+    pixel_gen = _pixel_generator(pixel_chars, pixel_format)
+    quantized_rle_codes = from_image_to_rle(quantized_image)
+
+    def code_formater(i: int, count: int, centers: np.ndarray) -> np.str_:
+        pixel_char = next(pixel_gen)
+        block = pixel_char * count
+
+        r, g, b = centers[i].astype(int)
+        hex_str = f"#{r:02x}{g:02x}{b:02x}"
+        return np.str_(
+            f'<span style="background-color: {hex_str}; color:{hex_str}">{block}</span>'
+        )
+
+    html_template = functools.partial(html_str_template, font_size=font_size)
+    pixel_output = quantized_rle_codes_to_formatted_output(
+        quantized_rle_codes=quantized_rle_codes,
+        image_template=html_template,
+        code_formater=code_formater,
     )
 
     # Export to html file

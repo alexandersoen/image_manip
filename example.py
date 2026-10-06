@@ -16,6 +16,13 @@ image_manip.quantized_to_pixelart_html(
     quantized_coco, "coco_big_pixelart.html", font_size=24
 )
 
+image_manip.quantized_to_compact_pixelart_html(
+    quantized_coco, "coco_pixelart_compact.html", pixel_chars="coco! ", pixel_format="cycle"
+)
+image_manip.quantized_to_compact_pixelart_html(
+    quantized_coco, "coco_big_pixelart_compact.html", font_size=24
+)
+
 # Fringes Example
 
 image_fringes = image_manip.ImageManipulate("fringes_cutout.png")
